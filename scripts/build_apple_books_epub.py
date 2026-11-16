@@ -432,14 +432,15 @@ blockquote {{
   margin: 0;
   padding: 9px 0;
   border-bottom: 1px dotted #d1d5db;
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
   font-size: 18px;
 }}
 .toc-list a {{
   color: #111827;
   text-decoration: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  width: 100%;
 }}
 .toc-list a:hover {{
   text-decoration: underline;
@@ -742,7 +743,7 @@ def main():
 
     # Visual + EPUB3 Navigation TOC (nav.xhtml, included in BOTH manifest properties="nav" and spine)
     nav_chapter_lis = "\n".join(
-        f'        <li><a href="text/p{p_num:03d}.xhtml">{html.escape(title)}</a> <span class="toc-pg">{p_num}</span></li>'
+        f'        <li><a href="text/p{p_num:03d}.xhtml"><span>{html.escape(title)}</span><span class="toc-pg">{p_num}</span></a></li>'
         for p_num, title in toc_entries
     )
     (oebps / "nav.xhtml").write_text(
@@ -760,11 +761,11 @@ def main():
     <nav epub:type="toc" id="toc">
       <h1>Table of Contents</h1>
       <ol class="toc-list">
-        <li><a href="text/cover.xhtml">Cover</a> <span class="toc-pg">Cover</span></li>
-        <li><a href="text/title.xhtml">Title Page</a> <span class="toc-pg">i</span></li>
-        <li><a href="text/copyright.xhtml">Copyright &amp; Edition Information</a> <span class="toc-pg">ii</span></li>
+        <li><a href="text/cover.xhtml"><span>Cover</span><span class="toc-pg">Cover</span></a></li>
+        <li><a href="text/title.xhtml"><span>Title Page</span><span class="toc-pg">i</span></a></li>
+        <li><a href="text/copyright.xhtml"><span>Copyright &amp; Edition Information</span><span class="toc-pg">ii</span></a></li>
 {nav_chapter_lis}
-        <li><a href="text/colophon.xhtml">About This Edition &amp; Colophon</a> <span class="toc-pg">End</span></li>
+        <li><a href="text/colophon.xhtml"><span>About This Edition &amp; Colophon</span><span class="toc-pg">End</span></a></li>
       </ol>
     </nav>
     <div class="footer">iii</div>
