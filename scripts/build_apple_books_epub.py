@@ -765,9 +765,9 @@ def main():
 
         print(f"Chapter {ch_idx:02d}: {len(pages_xhtml_info)} pages, {len(aligned_ch_words)} words")
 
-    # Visual + EPUB3 Navigation TOC (nav.xhtml, included in BOTH manifest properties="nav" and spine)
-    nav_chapter_lis = "\n".join(
-        f'        <li><a href="text/p{p_num:03d}.xhtml"><span>{html.escape(title)}</span><span class="toc-pg">{p_num}</span></a></li>'
+    # Machine-readable EPUB3 Navigation TOC (nav.xhtml, clean titles only for Apple Books TOC sidebar)
+    nav_clean_lis = "\n".join(
+        f'        <li><a href="text/p{p_num:03d}.xhtml">{html.escape(title)}</a></li>'
         for p_num, title in toc_entries
     )
     (oebps / "nav.xhtml").write_text(
@@ -784,14 +784,47 @@ def main():
   <div class="page">
     <nav epub:type="toc" id="toc">
       <h1>Table of Contents</h1>
-      <ol class="toc-list">
-        <li><a href="text/cover.xhtml"><span>Cover</span><span class="toc-pg">Cover</span></a></li>
-        <li><a href="text/title.xhtml"><span>Title Page</span><span class="toc-pg">i</span></a></li>
-        <li><a href="text/copyright.xhtml"><span>Copyright &amp; Edition Information</span><span class="toc-pg">ii</span></a></li>
-{nav_chapter_lis}
-        <li><a href="text/colophon.xhtml"><span>About This Edition &amp; Colophon</span><span class="toc-pg">End</span></a></li>
+      <ol>
+        <li><a href="text/cover.xhtml">Cover</a></li>
+        <li><a href="text/title.xhtml">Title Page</a></li>
+        <li><a href="text/copyright.xhtml">Copyright &amp; Edition Information</a></li>
+        <li><a href="text/toc.xhtml">Table of Contents</a></li>
+{nav_clean_lis}
+        <li><a href="text/colophon.xhtml">About This Edition &amp; Colophon</a></li>
       </ol>
     </nav>
+  </div>
+</body>
+</html>
+""",
+        encoding="utf-8",
+    )
+
+    # Visual in-book Table of Contents page (text/toc.xhtml, included in spine with right-aligned page numbers)
+    visual_toc_lis = "\n".join(
+        f'      <li><a href="p{p_num:03d}.xhtml"><span>{html.escape(title)}</span><span class="toc-pg">{p_num}</span></a></li>'
+        for p_num, title in toc_entries
+    )
+    (oebps / "text" / "toc.xhtml").write_text(
+        f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width={PAGE_W}, height={PAGE_H}"/>
+  <title>Table of Contents</title>
+  <link rel="stylesheet" type="text/css" href="../styles/style.css"/>
+</head>
+<body>
+  <div class="page">
+    <h1>Table of Contents</h1>
+    <ol class="toc-list">
+      <li><a href="cover.xhtml"><span>Cover</span><span class="toc-pg">Cover</span></a></li>
+      <li><a href="title.xhtml"><span>Title Page</span><span class="toc-pg">i</span></a></li>
+      <li><a href="copyright.xhtml"><span>Copyright &amp; Edition Information</span><span class="toc-pg">ii</span></a></li>
+{visual_toc_lis}
+      <li><a href="colophon.xhtml"><span>About This Edition &amp; Colophon</span><span class="toc-pg">End</span></a></li>
+    </ol>
     <div class="footer">iii</div>
   </div>
 </body>
@@ -807,7 +840,7 @@ def main():
         ('cover', 1, 'Cover', 'text/cover.xhtml'),
         ('title', 2, 'Title Page', 'text/title.xhtml'),
         ('copyright', 3, 'Copyright & Edition Information', 'text/copyright.xhtml'),
-        ('nav', 4, 'Table of Contents', 'nav.xhtml'),
+        ('nav', 4, 'Table of Contents', 'text/toc.xhtml'),
     ]
     play_order = 5
     for p_num, title in toc_entries:
@@ -849,13 +882,14 @@ def main():
         '    <item id="cover" href="text/cover.xhtml" media-type="application/xhtml+xml"/>',
         '    <item id="title" href="text/title.xhtml" media-type="application/xhtml+xml"/>',
         '    <item id="copyright" href="text/copyright.xhtml" media-type="application/xhtml+xml"/>',
+        '    <item id="toc_page" href="text/toc.xhtml" media-type="application/xhtml+xml"/>',
         '    <item id="colophon" href="text/colophon.xhtml" media-type="application/xhtml+xml"/>',
     ]
     spine_lines = [
         '    <itemref idref="cover" properties="rendition:page-spread-center"/>',
         '    <itemref idref="title"/>',
         '    <itemref idref="copyright"/>',
-        '    <itemref idref="nav"/>',
+        '    <itemref idref="toc_page"/>',
     ]
     duration_metas = [f'    <meta property="media:duration">{format_smil_time(total_ticks)}</meta>']
 
