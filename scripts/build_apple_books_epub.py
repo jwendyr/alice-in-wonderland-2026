@@ -165,6 +165,32 @@ def split_paragraph_to_fit(raw: str, remaining_lines: float):
     return (" ".join(fit) if fit else None), (" ".join(rest) if rest else None), used
 
 
+def split_blockquote_to_fit(raw: str, remaining_lines: float):
+    """Split a multi-line blockquote/poem at line boundaries to fit remaining_lines cleanly."""
+    lines = raw.splitlines()
+    # Account for 1.0 line margin/padding overhead
+    max_q_lines = int(remaining_lines - 1.0)
+    if max_q_lines < 2:
+        return None, raw, 0.0
+    fit_lines = []
+    rest_lines = []
+    used = 1.0
+    for i, ln in enumerate(lines):
+        ln_cost = max(1, math.ceil(len(ln) / (CHARS_PER_LINE - 6))) if ln.strip() else 0.7
+        if used + ln_cost <= remaining_lines or not fit_lines:
+            if used + ln_cost > remaining_lines:
+                rest_lines = lines[i:]
+                break
+            fit_lines.append(ln)
+            used += ln_cost
+        else:
+            rest_lines = lines[i:]
+            break
+    if not fit_lines:
+        return None, raw, 0.0
+    return "\n".join(fit_lines).strip(), ("\n".join(rest_lines).strip() if rest_lines else None), used
+
+
 def paginate_blocks(title: str, blocks: list, has_illus: bool = False) -> list:
     queue = [("h1", title)]
     if has_illus:
@@ -198,6 +224,19 @@ def paginate_blocks(title: str, blocks: list, has_illus: bool = False) -> list:
                     cur_page = []
                     cur_lines = 0.0
                     continue
+            if tag == "blockquote" and rem >= 4.0:
+                fit_q, rest_q, used_q = split_blockquote_to_fit(raw, rem)
+                if fit_q:
+                    cur_page.append(("blockquote", fit_q))
+                    cur_lines += used_q
+                    if rest_q:
+                        queue[idx] = ("blockquote", rest_q)
+                    else:
+                        idx += 1
+                    pages.append(cur_page)
+                    cur_page = []
+                    cur_lines = 0.0
+                    continue
             if cur_page:
                 pages.append(cur_page)
                 cur_page = []
@@ -208,6 +247,12 @@ def paginate_blocks(title: str, blocks: list, has_illus: bool = False) -> list:
                     if fit_txt and rest_txt:
                         pages.append([("p", fit_txt)])
                         queue[idx] = ("p", rest_txt)
+                        continue
+                if tag == "blockquote":
+                    fit_q, rest_q, _ = split_blockquote_to_fit(raw, MAX_LINES_PER_PAGE)
+                    if fit_q and rest_q:
+                        pages.append([("blockquote", fit_q)])
+                        queue[idx] = ("blockquote", rest_q)
                         continue
                 pages.append([(tag, raw)])
                 idx += 1
@@ -653,7 +698,7 @@ def main():
                         else ""
                         for ln in raw.splitlines()
                     ]
-                    body_parts.append(f"<blockquote><p>{'<br/>'.join(q_lines)}</p></blockquote>")
+                    body_parts.append(f"<blockquote><p>{' <br/>\n'.join(q_lines)}</p></blockquote>")
                 else:
                     body_parts.append(
                         f"<p>{render_inline_sentences_and_words(raw, sent_counter, word_counter, ch_words)}</p>"
