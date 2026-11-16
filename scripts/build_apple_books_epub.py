@@ -337,6 +337,11 @@ def align_words_to_events(words: list, events: list) -> list:
                 if aligned[i]["end"] <= aligned[i]["begin"]:
                     aligned[i]["end"] = aligned[i]["begin"] + 400_000
 
+    # Make SMIL clipEnd[i] == clipBegin[i+1] so Apple Books plays continuously without seeking between words
+    for i in range(len(aligned) - 1):
+        if aligned[i + 1]["begin"] > aligned[i]["end"]:
+            aligned[i]["end"] = aligned[i + 1]["begin"]
+
     return aligned
 
 
