@@ -390,7 +390,6 @@ h2 {{
 p {{
   margin: 0 0 14px 0;
   text-align: justify;
-  hyphens: auto;
 }}
 blockquote {{
   margin: 12px 24px 16px 24px;
@@ -661,10 +660,10 @@ def main():
     for ch_idx, ch_path in enumerate(chapter_files, 1):
         m4a_path = ensure_m4a(ch_idx)
         (oebps / "audio" / f"ch{ch_idx:02d}.m4a").write_bytes(m4a_path.read_bytes())
-        img_src = IMAGES_DIR / f"ch{ch_idx:02d}.jpg"
+        img_src = IMAGES_DIR / f"ch{ch_idx:02d}.png"
         has_illus = img_src.exists()
         if has_illus:
-            (oebps / "images" / f"ch{ch_idx:02d}.jpg").write_bytes(img_src.read_bytes())
+            (oebps / "images" / f"ch{ch_idx:02d}.png").write_bytes(img_src.read_bytes())
 
         events = json.loads((AUDIO_MP3_DIR / f"ch{ch_idx:02d}.events.json").read_text(encoding="utf-8"))
         title, blocks = parse_markdown_blocks(ch_path.read_text(encoding="utf-8"))
@@ -686,7 +685,7 @@ def main():
                     )
                 elif tag == "illus":
                     body_parts.append(
-                        f'<div class="illus-wrap"><img src="../images/ch{ch_idx:02d}.jpg" alt="{html.escape(title)} Illustration"/></div>'
+                        f'<div class="illus-wrap"><img src="../images/ch{ch_idx:02d}.png" alt="{html.escape(title)} Illustration"/></div>'
                     )
                 elif tag == "h2":
                     body_parts.append(
@@ -838,9 +837,9 @@ def main():
         manifest_lines.append(
             f'    <item id="aud_ch{ch_idx:02d}" href="audio/ch{ch_idx:02d}.m4a" media-type="audio/mp4"/>'
         )
-        if (IMAGES_DIR / f"ch{ch_idx:02d}.jpg").exists():
+        if (IMAGES_DIR / f"ch{ch_idx:02d}.png").exists():
             manifest_lines.append(
-                f'    <item id="img_ch{ch_idx:02d}" href="images/ch{ch_idx:02d}.jpg" media-type="image/jpeg"/>'
+                f'    <item id="img_ch{ch_idx:02d}" href="images/ch{ch_idx:02d}.png" media-type="image/png"/>'
             )
 
     for p in all_pages:
