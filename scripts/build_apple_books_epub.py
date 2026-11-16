@@ -836,7 +836,7 @@ def main():
 
     for ch_idx in range(1, len(chapter_files) + 1):
         manifest_lines.append(
-            f'    <item id="aud_ch{ch_idx:02d}" href="audio/ch{ch_idx:02d}.m4a" media-type="audio/m4a"/>'
+            f'    <item id="aud_ch{ch_idx:02d}" href="audio/ch{ch_idx:02d}.m4a" media-type="audio/mp4"/>'
         )
         if (IMAGES_DIR / f"ch{ch_idx:02d}.jpg").exists():
             manifest_lines.append(
@@ -860,7 +860,7 @@ def main():
 
     (oebps / "content.opf").write_text(
         f"""<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://www.idpf.org/opf" version="3.0" unique-identifier="bookid" prefix="rendition: http://www.idpf.org/vocab/rendition/# ibooks: http://vocabulary.itunes.apple.com/rdf/ibooks/vocabulary-extensions-1.0/ schema: http://schema.org/">
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" prefix="rendition: http://www.idpf.org/vocab/rendition/# ibooks: http://vocabulary.itunes.apple.com/rdf/ibooks/vocabulary-extensions-1.0/ schema: http://schema.org/">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="bookid">urn:uuid:{book_uuid}</dc:identifier>
     <dc:title>Alice’s Adventures in Wonderland (2026 Modern Edition)</dc:title>
