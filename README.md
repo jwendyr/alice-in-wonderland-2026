@@ -4,8 +4,9 @@ A complete, unabridged modernization of Lewis Carroll's public-domain classic *A
 
 Includes:
 - **Complete 12-chapter Markdown edition** (`BOOK.md` and `chapters/ch01.md`–`ch12.md`)
-- **EPUB3 with Word-by-Word Read-Aloud (`dist/alice-in-wonderland-2026-word-by-word.epub`)** — built with **EPUB3 SMIL Media Overlays** (`clipBegin`/`clipEnd` per word) and neural narration (`en-US-AriaNeural`), enabling synchronized word-by-word highlighting in EPUB3 readers like Apple Books and Thorium Reader.
+- **EPUB3 with Word-by-Word Read-Aloud (`dist/alice-in-wonderland-2026-word-by-word.epub`)** — Apple Books Fixed-Layout (`768×1024`) EPUB3 with **16-voice theatrical narration**, **two-level (sentence + word) highlighting**, **transparent Victorian etching illustrations**, full front/back matter, and W3C EPUBCheck 5.1.0 validation (`0 errors, 0 warnings`).
 - **Interactive Web Word-by-Word Reader (`docs/index.html`)** — supports both **Read-Aloud Sync** (click any word to jump audio & highlight) and **RSVP Speed Reader** (adjustable 120–600 WPM).
+- **Full Pipeline Documentation (`PIPELINE.md`)** — architecture, Apple Books quirks, and troubleshooting notes.
 
 ## Structure
 
