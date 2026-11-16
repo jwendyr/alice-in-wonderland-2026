@@ -22,8 +22,8 @@ DIST_DIR = ROOT / "dist"
 
 PAGE_W = 768
 PAGE_H = 1024
-MAX_LINES_PER_PAGE = 26
-CHARS_PER_LINE = 56
+MAX_LINES_PER_PAGE = 28.0
+CHARS_PER_LINE = 68
 LEAD_TICKS = 1_200_000  # 120ms earlier so highlight leads audio buffer cleanly
 
 
@@ -130,63 +130,86 @@ def render_inline_sentences_and_words(
     return " ".join(rendered_sents)
 
 
-def estimate_block_lines(tag: str, raw: str) -> int:
+def estimate_block_lines(tag: str, raw: str) -> float:
     if tag == "h1":
-        return 4
+        return 2.0
     if tag == "h2":
-        return 3
+        return 2.0
     if tag == "illus":
-        return 12
+        return 13.5
     if tag == "blockquote":
         lines = raw.splitlines()
-        return sum(max(1, math.ceil(len(ln) / (CHARS_PER_LINE - 6))) for ln in lines) + 2
-    return max(1, math.ceil(len(raw) / CHARS_PER_LINE)) + 1
+        return sum(max(1, math.ceil(len(ln) / (CHARS_PER_LINE - 6))) for ln in lines) + 1.0
+    return max(1, math.ceil(len(raw) / CHARS_PER_LINE)) + 0.45
 
 
-def split_long_paragraph(raw: str, max_lines: int) -> list:
-    if estimate_block_lines("p", raw) <= max_lines:
-        return [raw]
-    sentences = re.split(r"(?<=[.!?\"”’)])\s+", raw)
-    chunks = []
-    cur = []
-    cur_len = 0
-    max_chars = (max_lines - 1) * CHARS_PER_LINE
-    for s in sentences:
-        if cur and cur_len + len(s) + 1 > max_chars:
-            chunks.append(" ".join(cur))
-            cur = [s]
-            cur_len = len(s)
+def split_paragraph_to_fit(raw: str, remaining_lines: float):
+    """Split a paragraph at sentence boundaries to fill remaining_lines cleanly."""
+    sentences = re.split(r"(?<=[.!?\"”’)])\s+", raw.strip())
+    fit = []
+    rest = []
+    used = 0.0
+    for i, s in enumerate(sentences):
+        # Estimate lines if appended to current paragraph
+        cand = " ".join(fit + [s])
+        cand_lines = max(1, math.ceil(len(cand) / CHARS_PER_LINE)) + 0.45
+        if cand_lines <= remaining_lines or (not fit and remaining_lines >= 3.0 and len(sentences) == 1 and cand_lines <= remaining_lines + 0.5):
+            fit.append(s)
+            used = cand_lines
         else:
-            cur.append(s)
-            cur_len += len(s) + 1
-    if cur:
-        chunks.append(" ".join(cur))
-    return chunks
+            rest = sentences[i:]
+            break
+    return (" ".join(fit) if fit else None), (" ".join(rest) if rest else None), used
 
 
 def paginate_blocks(title: str, blocks: list, has_illus: bool = False) -> list:
-    expanded = [("h1", title)]
+    """Group chapter blocks into fixed-layout pages, splitting paragraphs at sentence boundaries to fill pages evenly."""
+    queue = [("h1", title)]
     if has_illus:
-        expanded.append(("illus", ""))
-    for tag, raw in blocks:
-        if tag == "p":
-            for piece in split_long_paragraph(raw, MAX_LINES_PER_PAGE - 2):
-                expanded.append(("p", piece))
-        else:
-            expanded.append((tag, raw))
+        queue.append(("illus", ""))
+    queue.extend(blocks)
 
     pages = []
     cur_page = []
-    cur_lines = 0
-    for tag, raw in expanded:
+    cur_lines = 0.0
+
+    idx = 0
+    while idx < len(queue):
+        tag, raw = queue[idx]
         blines = estimate_block_lines(tag, raw)
-        if cur_page and cur_lines + blines > MAX_LINES_PER_PAGE:
-            pages.append(cur_page)
-            cur_page = [(tag, raw)]
-            cur_lines = blines
-        else:
+        if cur_lines + blines <= MAX_LINES_PER_PAGE:
             cur_page.append((tag, raw))
             cur_lines += blines
+            idx += 1
+        else:
+            rem = MAX_LINES_PER_PAGE - cur_lines
+            if tag == "p" and rem >= 2.5:
+                fit_txt, rest_txt, used_lines = split_paragraph_to_fit(raw, rem)
+                if fit_txt:
+                    cur_page.append(("p", fit_txt))
+                    cur_lines += used_lines
+                    if rest_txt:
+                        queue[idx] = ("p", rest_txt)
+                    else:
+                        idx += 1
+                    pages.append(cur_page)
+                    cur_page = []
+                    cur_lines = 0.0
+                    continue
+            if cur_page:
+                pages.append(cur_page)
+                cur_page = []
+                cur_lines = 0.0
+            else:
+                # Single block larger than an entire page (e.g. long paragraph on empty page)
+                if tag == "p":
+                    fit_txt, rest_txt, _ = split_paragraph_to_fit(raw, MAX_LINES_PER_PAGE)
+                    if fit_txt and rest_txt:
+                        pages.append([("p", fit_txt)])
+                        queue[idx] = ("p", rest_txt)
+                        continue
+                pages.append([(tag, raw)])
+                idx += 1
     if cur_page:
         pages.append(cur_page)
     return pages
@@ -284,29 +307,32 @@ html, body {{
   background-color: #ffffff;
   color: #111827;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 18px;
-  line-height: 1.55;
+  font-size: 20px;
+  line-height: 1.6;
 }}
 .page {{
   box-sizing: border-box;
   width: {PAGE_W}px;
   height: {PAGE_H}px;
-  padding: 56px 64px 52px 64px;
+  padding: 52px 60px 56px 60px;
   position: relative;
 }}
 h1 {{
   font-size: 27px;
   line-height: 1.25;
-  margin: 0 0 18px 0;
+  margin: 0 0 16px 0;
   text-align: center;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 10px;
 }}
 h2 {{
   font-size: 22px;
-  margin: 16px 0 12px 0;
+  margin: 14px 0 10px 0;
 }}
 p {{
   margin: 0 0 14px 0;
   text-align: justify;
+  hyphens: auto;
 }}
 blockquote {{
   margin: 12px 24px 16px 24px;
@@ -316,15 +342,18 @@ blockquote {{
 }}
 .illus-wrap {{
   text-align: center;
-  margin: 4px 0 18px 0;
+  margin: 6px 0 18px 0;
 }}
 .illus-wrap img {{
   max-width: 100%;
-  max-height: 290px;
+  max-height: 400px;
   width: auto;
   height: auto;
-  border: 1px solid #d1d5db;
+  padding: 6px;
+  background-color: #faf6ee;
+  border: 1px solid #d6cbb5;
   border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }}
 .footer {{
   position: absolute;
