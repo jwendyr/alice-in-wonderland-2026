@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alice in Wonderland (2026) — Word-by-Word Reader</title>
+  <style>
+    :root {
+      --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --muted: #94a3b8;
+      --accent: #38bdf8; --hl: #fde047; --hl-text: #0f172a; --border: #334155;
+    }
+    body.light {
+      --bg: #f8fafc; --panel: #ffffff; --text: #0f172a; --muted: #64748b;
+      --accent: #0284c7; --hl: #fde047; --hl-text: #0f172a; --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.7;
+    }
+    header {
+      position: sticky; top: 0; z-index: 20;
+      background: var(--panel); border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.25rem; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between;
+    }
+    .controls { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+    select, button, input[type="range"] {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.45rem 0.75rem; font-size: 0.9rem; cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: #0f172a; border-color: var(--accent); font-weight: 600; }
+    main { max-width: 820px; margin: 1.5rem auto; padding: 0 1.25rem 4rem; }
+    .rsvp-box {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+      padding: 2.5rem 1.5rem; text-align: center; margin-bottom: 1.5rem;
+      display: none;
+    }
+    .rsvp-box.active { display: block; }
+    .rsvp-word { font-size: clamp(2rem, 6vw, 3.5rem); font-weight: 700; letter-spacing: 0.02em; min-height: 4.5rem; }
+    .rsvp-meta { color: var(--muted); font-size: 0.9rem; margin-top: 0.5rem; }
+    .chapter-card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+      padding: 2rem; font-family: Georgia, serif; font-size: 1.15rem;
+    }
+    .chapter-card h1 { font-family: system-ui, sans-serif; text-align: center; margin-top: 0; }
+    .chapter-card blockquote { border-left: 3px solid var(--accent); margin: 1.2rem 1rem; padding-left: 1rem; font-style: italic; }
+    .w { cursor: pointer; border-radius: 4px; transition: background 0.08s; }
+    .w:hover { background: rgba(56, 189, 248, 0.2); }
+    .w.active { background: var(--hl); color: var(--hl-text); padding: 0 2px; }
+    .hint { color: var(--muted); font-size: 0.85rem; margin-bottom: 1rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>Alice in Wonderland (2026)</strong></div>
+    <div class="controls">
+      <select id="chapterSelect"></select>
+      <select id="modeSelect">
+        <option value="sync">Read-Aloud (Word-by-Word)</option>
+        <option value="rsvp">RSVP Speed Reader</option>
+      </select>
+      <button id="playBtn" class="primary">Play</button>
+      <label id="wpmWrap" style="display:none; font-size:0.85rem;">
+        WPM: <span id="wpmVal">260</span>
+        <input id="wpmRange" type="range" min="120" max="600" step="20" value="260" />
+      </label>
+      <button id="themeBtn">Theme</button>
+    </div>
+  </header>
+  <main>
+    <div class="hint">Click any word in the text to jump directly to that word.</div>
+    <div id="rsvpBox" class="rsvp-box">
+      <div id="rsvpWord" class="rsvp-word">Ready</div>
+      <div id="rsvpMeta" class="rsvp-meta">Word 0 / 0</div>
+    </div>
+    <article id="reader" class="chapter-card"></article>
+  </main>
+  <audio id="audioEl"></audio>
+
+  <script>
+    let bookData = null;
+    let currentChapter = 0;
+    let currentWords = [];
+    let activeIdx = -1;
+    let rsvpTimer = null;
+    let rsvpPlaying = false;
+
+    const chapterSelect = document.getElementById('chapterSelect');
+    const modeSelect = document.getElementById('modeSelect');
+    const playBtn = document.getElementById('playBtn');
+    const wpmWrap = document.getElementById('wpmWrap');
+    const wpmRange = document.getElementById('wpmRange');
+    const wpmVal = document.getElementById('wpmVal');
+    const rsvpBox = document.getElementById('rsvpBox');
+    const rsvpWord = document.getElementById('rsvpWord');
+    const rsvpMeta = document.getElementById('rsvpMeta');
+    const reader = document.getElementById('reader');
+    const audioEl = document.getElementById('audioEl');
+
+    function setActiveWord(idx, scroll = true) {
+      if (activeIdx >= 0 && currentWords[activeIdx]) {
+        currentWords[activeIdx].el.classList.remove('active');
+      }
+      activeIdx = idx;
+      if (idx >= 0 && currentWords[idx]) {
+        const w = currentWords[idx];
+        w.el.classList.add('active');
+        rsvpWord.textContent = w.text;
+        rsvpMeta.textContent = `Word ${idx + 1} / ${currentWords.length}`;
+        if (scroll) w.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+
+    function stopAll() {
+      audioEl.pause();
+      clearInterval(rsvpTimer);
+      rsvpPlaying = false;
+      playBtn.textContent = 'Play';
+    }
+
+    function loadChapter(idx) {
+      stopAll();
+      currentChapter = idx;
+      const ch = bookData.chapters[idx];
+      reader.innerHTML = ch.html;
+      audioEl.src = ch.audio;
+      currentWords = ch.words.map(w => ({
+        ...w,
+        el: document.getElementById(w.id)
+      })).filter(w => w.el);
+
+      currentWords.forEach((w, i) => {
+        w.el.classList.add('w');
+        w.el.onclick = () => {
+          setActiveWord(i, false);
+          if (modeSelect.value === 'sync') {
+            audioEl.currentTime = w.beginSec;
+            audioEl.play();
+            playBtn.textContent = 'Pause';
+          }
+        };
+      });
+      setActiveWord(0, false);
+    }
+
+    audioEl.addEventListener('timeupdate', () => {
+      if (modeSelect.value !== 'sync') return;
+      const t = audioEl.currentTime;
+      // Binary search for active word
+      let lo = 0, hi = currentWords.length - 1, found = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (currentWords[mid].beginSec <= t) { found = mid; lo = mid + 1; }
+        else { hi = mid - 1; }
+      }
+      if (found >= 0 && found !== activeIdx) setActiveWord(found, true);
+    });
+
+    audioEl.addEventListener('ended', () => { playBtn.textContent = 'Play'; });
+
+    function startRsvp() {
+      const intervalMs = 60000 / Number(wpmRange.value);
+      rsvpPlaying = true;
+      playBtn.textContent = 'Pause';
+      rsvpTimer = setInterval(() => {
+        const next = activeIdx + 1;
+        if (next >= currentWords.length) { stopAll(); return; }
+        setActiveWord(next, false);
+      }, intervalMs);
+    }
+
+    playBtn.onclick = () => {
+      if (modeSelect.value === 'sync') {
+        if (audioEl.paused) { audioEl.play(); playBtn.textContent = 'Pause'; }
+        else { audioEl.pause(); playBtn.textContent = 'Play'; }
+      } else {
+        if (rsvpPlaying) stopAll();
+        else startRsvp();
+      }
+    };
+
+    modeSelect.onchange = () => {
+      stopAll();
+      const isRsvp = modeSelect.value === 'rsvp';
+      rsvpBox.classList.toggle('active', isRsvp);
+      wpmWrap.style.display = isRsvp ? 'inline-flex' : 'none';
+    };
+
+    wpmRange.oninput = () => {
+      wpmVal.textContent = wpmRange.value;
+      if (rsvpPlaying) { clearInterval(rsvpTimer); startRsvp(); }
+    };
+
+    chapterSelect.onchange = () => loadChapter(Number(chapterSelect.value));
+    document.getElementById('themeBtn').onclick = () => document.body.classList.toggle('light');
+
+    fetch('data/book.json')
+      .then(r => r.json())
+      .then(data => {
+        bookData = data;
+        data.chapters.forEach((ch, i) => {
+          const opt = document.createElement('option');
+          opt.value = i;
+          opt.textContent = ch.title;
+          chapterSelect.appendChild(opt);
+        });
+        loadChapter(0);
+      });
+  </script>
+</body>
+</html>
