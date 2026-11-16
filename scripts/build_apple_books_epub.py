@@ -7,6 +7,7 @@
 - Two-level (sentence + word) SMIL highlighting with -120ms visual lead compensation
 """
 
+import difflib
 import html
 import json
 import math
@@ -29,7 +30,7 @@ PAGE_W = 768
 PAGE_H = 1024
 MAX_LINES_PER_PAGE = 28.0
 CHARS_PER_LINE = 68
-LEAD_TICKS = 1_200_000  # 120ms earlier so highlight leads audio buffer cleanly
+LEAD_TICKS = 800_000  # 80ms visual lead compensation
 
 
 def format_smil_time(ticks_100ns: int) -> str:
@@ -215,68 +216,81 @@ def paginate_blocks(title: str, blocks: list, has_illus: bool = False) -> list:
     return pages
 
 
-def align_words_to_events(words: list, events: list) -> list:
-    aligned = []
-    e_idx = 0
-    n_events = len(events)
-    last_end = 0
-
-    for w in words:
-        wnorm = normalize_token(w["text"])
-        if e_idx >= n_events:
-            aligned.append({
-                "id": w["id"],
-                "sid": w["sid"],
-                "text": w["text"],
-                "begin": last_end,
-                "end": last_end + 1_500_000,
-            })
-            last_end += 1_500_000
-            continue
-
-        matched_idx = None
-        for probe in range(e_idx, min(n_events, e_idx + 6)):
-            enorm = normalize_token(events[probe]["text"])
-            if not enorm:
-                continue
-            if enorm == wnorm or (wnorm and (wnorm.startswith(enorm) or enorm.startswith(wnorm))):
-                matched_idx = probe
-                break
-
-        if matched_idx is not None:
-            start_tick = events[matched_idx]["offset"]
-            end_tick = start_tick + max(events[matched_idx]["duration"], 500_000)
-            cur_norm = normalize_token(events[matched_idx]["text"])
-            next_idx = matched_idx + 1
-            while (
-                next_idx < n_events
-                and len(cur_norm) < len(wnorm)
-                and wnorm.startswith(cur_norm + normalize_token(events[next_idx]["text"]))
-            ):
-                cur_norm += normalize_token(events[next_idx]["text"])
-                end_tick = events[next_idx]["offset"] + max(events[next_idx]["duration"], 500_000)
-                next_idx += 1
-            e_idx = next_idx
-            last_end = end_tick
-            aligned.append({"id": w["id"], "sid": w["sid"], "text": w["text"], "begin": start_tick, "end": end_tick})
+def expand_events(events: list) -> list:
+    """Split multi-word WordBoundary events (e.g., 'Chapter 1') into single-word events."""
+    expanded = []
+    for ev in events:
+        parts = re.findall(r"[A-Za-z0-9]+(?:['’\-][A-Za-z0-9]+)*", ev["text"])
+        if len(parts) <= 1:
+            expanded.append(ev)
         else:
-            ev = events[e_idx]
-            start_tick = max(last_end, ev["offset"])
-            end_tick = start_tick + max(ev["duration"], 1_000_000)
-            last_end = end_tick
-            e_idx += 1
-            aligned.append({"id": w["id"], "sid": w["sid"], "text": w["text"], "begin": start_tick, "end": end_tick})
+            total_chars = max(1, sum(len(p) for p in parts))
+            cur_off = ev["offset"]
+            for idx, p in enumerate(parts):
+                dur = round(ev["duration"] * (len(p) / total_chars)) if idx < len(parts) - 1 else (ev["offset"] + ev["duration"] - cur_off)
+                dur = max(200_000, dur)
+                expanded.append({"text": p, "offset": cur_off, "duration": dur})
+                cur_off += dur
+    return expanded
+
+
+def align_words_to_events(words: list, events: list) -> list:
+    """Align XHTML words to TTS WordBoundary events using SequenceMatcher for zero drift."""
+    ev_list = expand_events(events)
+    w_norms = [normalize_token(w["text"]) for w in words]
+    e_norms = [normalize_token(e["text"]) for e in ev_list]
+
+    sm = difflib.SequenceMatcher(None, w_norms, e_norms, autojunk=False)
+    aligned = [None] * len(words)
+
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            for k in range(i2 - i1):
+                ev = ev_list[j1 + k]
+                aligned[i1 + k] = {
+                    "id": words[i1 + k]["id"],
+                    "sid": words[i1 + k]["sid"],
+                    "text": words[i1 + k]["text"],
+                    "begin": ev["offset"],
+                    "end": ev["offset"] + max(ev["duration"], 500_000),
+                }
+        elif tag in ("replace", "delete"):
+            n_w = i2 - i1
+            if n_w <= 0:
+                continue
+            if j2 > j1:
+                span_start = ev_list[j1]["offset"]
+                span_end = ev_list[j2 - 1]["offset"] + max(ev_list[j2 - 1]["duration"], 500_000)
+            else:
+                prev_end = ev_list[j1 - 1]["offset"] + ev_list[j1 - 1]["duration"] if j1 > 0 else 0
+                next_start = ev_list[j1]["offset"] if j1 < len(ev_list) else prev_end + n_w * 1_500_000
+                span_start = prev_end
+                span_end = max(span_start + n_w * 500_000, next_start)
+            step = max(500_000, (span_end - span_start) // n_w)
+            for k in range(n_w):
+                b = span_start + k * step
+                e = b + step if k < n_w - 1 else max(b + 500_000, span_end)
+                aligned[i1 + k] = {
+                    "id": words[i1 + k]["id"],
+                    "sid": words[i1 + k]["sid"],
+                    "text": words[i1 + k]["text"],
+                    "begin": b,
+                    "end": e,
+                }
 
     for i in range(len(aligned)):
+        if aligned[i] is None:
+            prev_end = aligned[i - 1]["end"] if i > 0 else 0
+            aligned[i] = {"id": words[i]["id"], "sid": words[i]["sid"], "text": words[i]["text"], "begin": prev_end, "end": prev_end + 1_000_000}
         aligned[i]["begin"] = max(0, aligned[i]["begin"] - LEAD_TICKS)
-        aligned[i]["end"] = max(aligned[i]["begin"] + 500_000, aligned[i]["end"] - LEAD_TICKS)
+        aligned[i]["end"] = max(aligned[i]["begin"] + 400_000, aligned[i]["end"] - LEAD_TICKS)
         if i > 0 and aligned[i]["begin"] < aligned[i - 1]["end"]:
             if aligned[i]["begin"] > aligned[i - 1]["begin"]:
                 aligned[i - 1]["end"] = aligned[i]["begin"]
             else:
                 aligned[i]["begin"] = aligned[i - 1]["end"]
                 if aligned[i]["end"] <= aligned[i]["begin"]:
-                    aligned[i]["end"] = aligned[i]["begin"] + 500_000
+                    aligned[i]["end"] = aligned[i]["begin"] + 400_000
 
     return aligned
 
@@ -348,11 +362,11 @@ blockquote {{
   max-height: 400px;
   width: auto;
   height: auto;
-  padding: 6px;
-  background-color: #faf6ee;
-  border: 1px solid #d6cbb5;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: none;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  mix-blend-mode: multiply;
 }}
 .footer {{
   position: absolute;
