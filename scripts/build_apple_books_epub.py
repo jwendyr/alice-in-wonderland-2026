@@ -458,7 +458,8 @@ blockquote {{
   text-align: left;
   margin-bottom: 12px;
 }}
-span.sent.-epub-media-overlay-active {{
+span.sent.-epub-media-overlay-active,
+span.sent.sent-active {{
   background-color: #fef9c3;
   border-radius: 4px;
 }}
@@ -625,13 +626,35 @@ def build_nested_smil(p_id: str, ch_idx: int, p_aligned: list) -> str:
 """
 
 
+HIGHLIGHT_JS = """(function () {
+  var activeSent = null;
+  function syncSentenceHighlight() {
+    var w = document.querySelector('span.word.-epub-media-overlay-active');
+    var nextSent = w ? w.closest('span.sent') : null;
+    if (activeSent && activeSent !== nextSent) {
+      activeSent.classList.remove('sent-active');
+    }
+    if (nextSent && nextSent !== activeSent) {
+      nextSent.classList.add('sent-active');
+    }
+    activeSent = nextSent;
+  }
+  var obs = new MutationObserver(syncSentenceHighlight);
+  window.addEventListener('DOMContentLoaded', function () {
+    obs.observe(document.body, { attributes: true, attributeFilter: ['class'], subtree: true });
+    syncSentenceHighlight();
+  });
+})();
+"""
+
+
 def main():
     DIST_DIR.mkdir(parents=True, exist_ok=True)
     epub_root = BUILD_DIR / "epub_fxl_src"
     if epub_root.exists():
         shutil.rmtree(epub_root)
     oebps = epub_root / "OEBPS"
-    for sub in ["META-INF", "OEBPS/text", "OEBPS/smil", "OEBPS/audio", "OEBPS/styles", "OEBPS/images"]:
+    for sub in ["META-INF", "OEBPS/text", "OEBPS/smil", "OEBPS/audio", "OEBPS/styles", "OEBPS/images", "OEBPS/scripts"]:
         (epub_root / sub).mkdir(parents=True, exist_ok=True)
 
     (epub_root / "META-INF" / "container.xml").write_text(
@@ -645,6 +668,7 @@ def main():
         encoding="utf-8",
     )
     (oebps / "styles" / "style.css").write_text(STYLE_CSS, encoding="utf-8")
+    (oebps / "scripts" / "highlight.js").write_text(HIGHLIGHT_JS, encoding="utf-8")
     (oebps / "text" / "cover.xhtml").write_text(COVER_XHTML, encoding="utf-8")
     (oebps / "text" / "title.xhtml").write_text(TITLE_XHTML, encoding="utf-8")
     (oebps / "text" / "copyright.xhtml").write_text(COPYRIGHT_XHTML, encoding="utf-8")
@@ -722,6 +746,7 @@ def main():
   <meta name="viewport" content="width={PAGE_W}, height={PAGE_H}"/>
   <title>{html.escape(title)}</title>
   <link rel="stylesheet" type="text/css" href="../styles/style.css"/>
+  <script type="text/javascript" src="../scripts/highlight.js"></script>
 </head>
 <body>
   <div class="page">
@@ -819,6 +844,7 @@ def main():
         '    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>',
         '    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
         '    <item id="css" href="styles/style.css" media-type="text/css"/>',
+        '    <item id="js_hl" href="scripts/highlight.js" media-type="application/javascript"/>',
         '    <item id="cover-image" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>',
         '    <item id="cover" href="text/cover.xhtml" media-type="application/xhtml+xml"/>',
         '    <item id="title" href="text/title.xhtml" media-type="application/xhtml+xml"/>',
@@ -845,7 +871,7 @@ def main():
     for p in all_pages:
         pid = p["p_id"]
         manifest_lines.append(
-            f'    <item id="{pid}" href="text/{pid}.xhtml" media-type="application/xhtml+xml" media-overlay="smil_{pid}"/>'
+            f'    <item id="{pid}" href="text/{pid}.xhtml" media-type="application/xhtml+xml" properties="scripted" media-overlay="smil_{pid}"/>'
         )
         manifest_lines.append(
             f'    <item id="smil_{pid}" href="smil/{pid}.smil" media-type="application/smil+xml"/>'
