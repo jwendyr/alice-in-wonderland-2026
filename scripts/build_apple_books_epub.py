@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""Build an Apple Books Read-Aloud Fixed-Layout EPUB3 with cover, etching illustrations,
-two-level (sentence + word) SMIL highlighting, and -120ms visual lead compensation."""
+"""Build a retail-grade Apple Books Read-Aloud Fixed-Layout EPUB3 with:
+- Full front matter (Cover, Title Page, Copyright & Terms, Interactive Table of Contents)
+- 12 modernized chapters with framed Victorian etching illustrations
+- Back matter (About This Edition & Colophon)
+- Complete EPUB3 nav.xhtml (in spine + manifest) + EPUB2 toc.ncx compatibility
+- Two-level (sentence + word) SMIL highlighting with -120ms visual lead compensation
+"""
 
 import html
 import json
@@ -28,7 +33,6 @@ LEAD_TICKS = 1_200_000  # 120ms earlier so highlight leads audio buffer cleanly
 
 
 def format_smil_time(ticks_100ns: int) -> str:
-    """Convert 100-nanosecond ticks into HH:MM:SS.mmm format."""
     total_ms = max(0, round(ticks_100ns / 10_000))
     ms = total_ms % 1000
     total_s = total_ms // 1000
@@ -87,8 +91,6 @@ def parse_markdown_blocks(md_text: str):
 def render_inline_sentences_and_words(
     text: str, sent_counter: list, word_counter: list, word_list: list
 ) -> str:
-    """Wrap each sentence in <span class='sent' id='sN'> and each word in <span class='word' id='wN'>."""
-    # Split into sentences while keeping trailing whitespace
     parts = re.split(r"(?<=[.!?\"”’)])\s+", text.strip())
     rendered_sents = []
 
@@ -144,16 +146,16 @@ def estimate_block_lines(tag: str, raw: str) -> float:
 
 
 def split_paragraph_to_fit(raw: str, remaining_lines: float):
-    """Split a paragraph at sentence boundaries to fill remaining_lines cleanly."""
     sentences = re.split(r"(?<=[.!?\"”’)])\s+", raw.strip())
     fit = []
     rest = []
     used = 0.0
     for i, s in enumerate(sentences):
-        # Estimate lines if appended to current paragraph
         cand = " ".join(fit + [s])
         cand_lines = max(1, math.ceil(len(cand) / CHARS_PER_LINE)) + 0.45
-        if cand_lines <= remaining_lines or (not fit and remaining_lines >= 3.0 and len(sentences) == 1 and cand_lines <= remaining_lines + 0.5):
+        if cand_lines <= remaining_lines or (
+            not fit and remaining_lines >= 3.0 and len(sentences) == 1 and cand_lines <= remaining_lines + 0.5
+        ):
             fit.append(s)
             used = cand_lines
         else:
@@ -163,7 +165,6 @@ def split_paragraph_to_fit(raw: str, remaining_lines: float):
 
 
 def paginate_blocks(title: str, blocks: list, has_illus: bool = False) -> list:
-    """Group chapter blocks into fixed-layout pages, splitting paragraphs at sentence boundaries to fill pages evenly."""
     queue = [("h1", title)]
     if has_illus:
         queue.append(("illus", ""))
@@ -201,7 +202,6 @@ def paginate_blocks(title: str, blocks: list, has_illus: bool = False) -> list:
                 cur_page = []
                 cur_lines = 0.0
             else:
-                # Single block larger than an entire page (e.g. long paragraph on empty page)
                 if tag == "p":
                     fit_txt, rest_txt, _ = split_paragraph_to_fit(raw, MAX_LINES_PER_PAGE)
                     if fit_txt and rest_txt:
@@ -267,7 +267,6 @@ def align_words_to_events(words: list, events: list) -> list:
             e_idx += 1
             aligned.append({"id": w["id"], "sid": w["sid"], "text": w["text"], "begin": start_tick, "end": end_tick})
 
-    # Apply visual lead compensation (-120ms) and ensure monotonic non-overlapping ranges
     for i in range(len(aligned)):
         aligned[i]["begin"] = max(0, aligned[i]["begin"] - LEAD_TICKS)
         aligned[i]["end"] = max(aligned[i]["begin"] + 500_000, aligned[i]["end"] - LEAD_TICKS)
@@ -365,6 +364,41 @@ blockquote {{
   color: #6b7280;
   font-family: -apple-system, sans-serif;
 }}
+.toc-list {{
+  list-style: none;
+  padding: 0;
+  margin: 18px 0 0 0;
+}}
+.toc-list li {{
+  margin: 0;
+  padding: 9px 0;
+  border-bottom: 1px dotted #d1d5db;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 18px;
+}}
+.toc-list a {{
+  color: #111827;
+  text-decoration: none;
+}}
+.toc-list a:hover {{
+  text-decoration: underline;
+}}
+.toc-pg {{
+  color: #6b7280;
+  font-family: -apple-system, sans-serif;
+  font-size: 14px;
+}}
+.front-box {{
+  font-size: 16px;
+  line-height: 1.65;
+  color: #374151;
+}}
+.front-box p {{
+  text-align: left;
+  margin-bottom: 12px;
+}}
 span.sent.-epub-media-overlay-active {{
   background-color: #fef9c3;
   border-radius: 4px;
@@ -383,17 +417,17 @@ COVER_XHTML = f"""<?xml version="1.0" encoding="utf-8"?>
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width={PAGE_W}, height={PAGE_H}"/>
-  <title>Alice’s Adventures in Wonderland (2026 Modern Edition)</title>
+  <title>Cover — Alice’s Adventures in Wonderland</title>
   <link rel="stylesheet" type="text/css" href="../styles/style.css"/>
 </head>
 <body style="margin:0; padding:0; background:#0b151e;">
   <div style="position:relative; width:{PAGE_W}px; height:{PAGE_H}px; overflow:hidden;">
     <img src="../images/cover.jpg" alt="Alice's Adventures in Wonderland Cover" style="width:100%; height:100%; object-fit:cover; display:block;"/>
-    <div style="position:absolute; top:38px; left:48px; right:48px; text-align:center; background:rgba(11,21,30,0.72); border:1px solid rgba(212,175,55,0.65); border-radius:8px; padding:16px 20px;">
+    <div style="position:absolute; top:38px; left:48px; right:48px; text-align:center; background:rgba(11,21,30,0.74); border:1px solid rgba(212,175,55,0.65); border-radius:8px; padding:16px 20px;">
       <div style="font-family:Georgia,serif; font-size:30px; font-weight:bold; color:#fef3c7; line-height:1.2;">Alice’s Adventures in Wonderland</div>
       <div style="font-family:-apple-system,sans-serif; font-size:13px; color:#fde68a; margin-top:6px; letter-spacing:0.06em; text-transform:uppercase;">2026 Modern All-Ages Edition · Illustrated &amp; Read Aloud</div>
     </div>
-    <div style="position:absolute; bottom:32px; left:140px; right:140px; text-align:center; background:rgba(11,21,30,0.72); border:1px solid rgba(212,175,55,0.55); border-radius:6px; padding:8px 14px;">
+    <div style="position:absolute; bottom:32px; left:140px; right:140px; text-align:center; background:rgba(11,21,30,0.74); border:1px solid rgba(212,175,55,0.55); border-radius:6px; padding:8px 14px;">
       <div style="font-family:Georgia,serif; font-size:16px; color:#fef3c7;">By Lewis Carroll</div>
     </div>
   </div>
@@ -402,8 +436,98 @@ COVER_XHTML = f"""<?xml version="1.0" encoding="utf-8"?>
 """
 
 
+TITLE_XHTML = f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width={PAGE_W}, height={PAGE_H}"/>
+  <title>Title Page — Alice’s Adventures in Wonderland</title>
+  <link rel="stylesheet" type="text/css" href="../styles/style.css"/>
+</head>
+<body>
+  <div class="page" style="display:flex; flex-direction:column; justify-content:space-between; text-align:center; padding-top:110px; padding-bottom:90px;">
+    <div>
+      <div style="font-family:-apple-system,sans-serif; font-size:13px; letter-spacing:0.18em; text-transform:uppercase; color:#6b7280; margin-bottom:20px;">Illustrated Read-Aloud Classic</div>
+      <h1 style="font-size:40px; border:none; margin-bottom:14px;">Alice’s Adventures in Wonderland</h1>
+      <div style="font-size:20px; color:#4b5563; font-style:italic; margin-bottom:44px;">2026 Modern All-Ages Edition</div>
+      <div style="width:90px; height:2px; background:#d1d5db; margin:0 auto 44px;"></div>
+      <div style="font-size:22px; font-weight:bold; color:#111827;">Lewis Carroll</div>
+      <div style="font-size:15px; color:#6b7280; margin-top:10px;">Original Work Published 1865 · Modernized 2026</div>
+    </div>
+    <div style="font-family:-apple-system,sans-serif; font-size:14px; color:#4b5563; line-height:1.8;">
+      <div><strong>2026 Modern Classics Digital Press</strong></div>
+      <div>Synchronized Word-by-Word Read-Aloud · Victorian Etching Illustrations</div>
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+
+COPYRIGHT_XHTML = f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width={PAGE_W}, height={PAGE_H}"/>
+  <title>Copyright &amp; Edition Notice</title>
+  <link rel="stylesheet" type="text/css" href="../styles/style.css"/>
+</head>
+<body>
+  <div class="page">
+    <h1>Copyright &amp; Edition Information</h1>
+    <div class="front-box">
+      <p><strong>Alice’s Adventures in Wonderland (2026 Modern All-Ages Edition)</strong></p>
+      <p>Based on the original 1865 work by Lewis Carroll (Charles Lutwidge Dodgson), which is in the <strong>Public Domain</strong> worldwide (sourced from Project Gutenberg #11).</p>
+      <p><strong>2026 Edition, Modernization, Illustrations &amp; Audio Synchronization</strong><br/>
+      Published in 2026 by 2026 Modern Classics Digital Press.<br/>
+      Repository: <code>github.com/jwendyr/alice-in-wonderland-2026</code></p>
+      <p><strong>Edition &amp; Accessibility Specifications</strong><br/>
+      • <strong>Format:</strong> EPUB 3.0 Fixed-Layout (Pre-Paginated, 768×1024)<br/>
+      • <strong>Read-Aloud Engine:</strong> SMIL 3.0 Media Overlays with two-level highlighting (sentence-level context + synchronized word-by-word tracking)<br/>
+      • <strong>Narration:</strong> English (US) Neural Voice (<code>en-US-AriaNeural</code>, AAC 64 kbps stereo)<br/>
+      • <strong>Illustrations:</strong> Original cover &amp; 12 Victorian copperplate-etching style chapter plates inspired by Sir John Tenniel’s 1865 woodcuts</p>
+      <p><strong>Terms of Use</strong><br/>
+      This digital edition is formatted for personal reading, family read-aloud, and educational use. The underlying 1865 text by Lewis Carroll remains in the public domain. No part of the bundled audio narration or custom digital layout may be redistributed as a proprietary DRM-locked product without attribution.</p>
+    </div>
+    <div class="footer">ii</div>
+  </div>
+</body>
+</html>
+"""
+
+
+COLOPHON_XHTML = f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width={PAGE_W}, height={PAGE_H}"/>
+  <title>About This Edition &amp; Colophon</title>
+  <link rel="stylesheet" type="text/css" href="../styles/style.css"/>
+</head>
+<body>
+  <div class="page">
+    <h1>About This Edition</h1>
+    <div class="front-box">
+      <p><strong>Why a 2026 Modern Edition?</strong><br/>
+      Lewis Carroll’s <em>Alice’s Adventures in Wonderland</em> has delighted readers since 1865, but its Victorian phrasing and dense punctuation can feel dated to younger or modern readers. This unabridged 2026 edition updates archaic expressions into crisp, natural everyday English while preserving every chapter, joke, poem, and character voice.</p>
+      <p><strong>How to Use Read Aloud in Apple Books</strong><br/>
+      1. Tap the center of any chapter page to reveal the Apple Books toolbar.<br/>
+      2. Tap the <strong>Read Aloud / Speaker</strong> icon at the top.<br/>
+      3. As the narrator reads, the active sentence is softly highlighted in pale cream-yellow while each spoken word is highlighted in bright gold-yellow.</p>
+      <p><strong>Colophon</strong><br/>
+      Typeset in Georgia 20pt on a 768×1024 fixed-layout grid. Etching-style chapter plates generated in homage to 19th-century copperplate book engraving. Audio synthesized and word-aligned via neural TTS boundary timestamps with -120 ms visual lead compensation.</p>
+    </div>
+    <div class="footer">Colophon</div>
+  </div>
+</body>
+</html>
+"""
+
+
 def build_nested_smil(p_id: str, ch_idx: int, p_aligned: list) -> str:
-    """Group <par> items into sentence <seq epub:textref='...#sN'> blocks for 2-level highlighting."""
     seqs = []
     cur_sid = None
     cur_pars = []
@@ -463,6 +587,9 @@ def main():
     )
     (oebps / "styles" / "style.css").write_text(STYLE_CSS, encoding="utf-8")
     (oebps / "text" / "cover.xhtml").write_text(COVER_XHTML, encoding="utf-8")
+    (oebps / "text" / "title.xhtml").write_text(TITLE_XHTML, encoding="utf-8")
+    (oebps / "text" / "copyright.xhtml").write_text(COPYRIGHT_XHTML, encoding="utf-8")
+    (oebps / "text" / "colophon.xhtml").write_text(COLOPHON_XHTML, encoding="utf-8")
     (oebps / "images" / "cover.jpg").write_bytes((IMAGES_DIR / "cover.jpg").read_bytes())
 
     chapter_files = sorted(CHAPTERS_DIR.glob("ch*.md"))
@@ -552,10 +679,11 @@ def main():
             total_ticks += p_dur_ticks
             all_pages.append({"p_id": p_id, "duration": format_smil_time(p_dur_ticks)})
 
-        print(f"Chapter {ch_idx:02d}: {len(pages_xhtml_info)} fixed-layout pages, {len(aligned_ch_words)} words")
+        print(f"Chapter {ch_idx:02d}: {len(pages_xhtml_info)} pages, {len(aligned_ch_words)} words")
 
-    nav_items = "\n".join(
-        f'      <li><a href="text/p{p_num:03d}.xhtml">{html.escape(title)}</a></li>'
+    # Visual + EPUB3 Navigation TOC (nav.xhtml, included in BOTH manifest properties="nav" and spine)
+    nav_chapter_lis = "\n".join(
+        f'        <li><a href="text/p{p_num:03d}.xhtml">{html.escape(title)}</a> <span class="toc-pg">{p_num}</span></li>'
         for p_num, title in toc_entries
     )
     (oebps / "nav.xhtml").write_text(
@@ -569,13 +697,19 @@ def main():
   <link rel="stylesheet" type="text/css" href="styles/style.css"/>
 </head>
 <body>
-  <nav epub:type="toc" id="toc">
-    <h1>Contents</h1>
-    <ol>
-      <li><a href="text/cover.xhtml">Cover</a></li>
-{nav_items}
-    </ol>
-  </nav>
+  <div class="page">
+    <nav epub:type="toc" id="toc">
+      <h1>Table of Contents</h1>
+      <ol class="toc-list">
+        <li><a href="text/cover.xhtml">Cover</a> <span class="toc-pg">Cover</span></li>
+        <li><a href="text/title.xhtml">Title Page</a> <span class="toc-pg">i</span></li>
+        <li><a href="text/copyright.xhtml">Copyright &amp; Edition Information</a> <span class="toc-pg">ii</span></li>
+{nav_chapter_lis}
+        <li><a href="text/colophon.xhtml">About This Edition &amp; Colophon</a> <span class="toc-pg">End</span></li>
+      </ol>
+    </nav>
+    <div class="footer">iii</div>
+  </div>
 </body>
 </html>
 """,
@@ -583,13 +717,61 @@ def main():
     )
 
     book_uuid = str(uuid.uuid4())
+
+    # EPUB2 toc.ncx for universal reader compatibility
+    ncx_points = [
+        ('cover', 1, 'Cover', 'text/cover.xhtml'),
+        ('title', 2, 'Title Page', 'text/title.xhtml'),
+        ('copyright', 3, 'Copyright & Edition Information', 'text/copyright.xhtml'),
+        ('nav', 4, 'Table of Contents', 'nav.xhtml'),
+    ]
+    play_order = 5
+    for p_num, title in toc_entries:
+        ncx_points.append((f'ch_p{p_num:03d}', play_order, title, f'text/p{p_num:03d}.xhtml'))
+        play_order += 1
+    ncx_points.append(('colophon', play_order, 'About This Edition & Colophon', 'text/colophon.xhtml'))
+
+    ncx_navpoints = "\n".join(
+        f"""    <navPoint id="{nid}" playOrder="{po}">
+      <navLabel><text>{html.escape(label)}</text></navLabel>
+      <content src="{src}"/>
+    </navPoint>"""
+        for nid, po, label, src in ncx_points
+    )
+    (oebps / "toc.ncx").write_text(
+        f"""<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:uid" content="urn:uuid:{book_uuid}"/>
+    <meta name="dtb:depth" content="1"/>
+    <meta name="dtb:totalPageCount" content="{len(all_pages)}"/>
+    <meta name="dtb:maxPageNumber" content="{len(all_pages)}"/>
+  </head>
+  <docTitle><text>Alice’s Adventures in Wonderland (2026 Modern Edition)</text></docTitle>
+  <navMap>
+{ncx_navpoints}
+  </navMap>
+</ncx>
+""",
+        encoding="utf-8",
+    )
+
     manifest_lines = [
+        '    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>',
         '    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
         '    <item id="css" href="styles/style.css" media-type="text/css"/>',
         '    <item id="cover-image" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>',
         '    <item id="cover" href="text/cover.xhtml" media-type="application/xhtml+xml"/>',
+        '    <item id="title" href="text/title.xhtml" media-type="application/xhtml+xml"/>',
+        '    <item id="copyright" href="text/copyright.xhtml" media-type="application/xhtml+xml"/>',
+        '    <item id="colophon" href="text/colophon.xhtml" media-type="application/xhtml+xml"/>',
     ]
-    spine_lines = ['    <itemref idref="cover" properties="rendition:page-spread-center"/>']
+    spine_lines = [
+        '    <itemref idref="cover" properties="rendition:page-spread-center"/>',
+        '    <itemref idref="title"/>',
+        '    <itemref idref="copyright"/>',
+        '    <itemref idref="nav"/>',
+    ]
     duration_metas = [f'    <meta property="media:duration">{format_smil_time(total_ticks)}</meta>']
 
     for ch_idx in range(1, len(chapter_files) + 1):
@@ -614,27 +796,41 @@ def main():
             f'    <meta property="media:duration" refines="#smil_{pid}">{p["duration"]}</meta>'
         )
 
+    spine_lines.append('    <itemref idref="colophon"/>')
+
     (oebps / "content.opf").write_text(
         f"""<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" prefix="rendition: http://www.idpf.org/vocab/rendition/# ibooks: http://vocabulary.itunes.apple.com/rdf/ibooks/vocabulary-extensions-1.0/">
+<package xmlns="http://www.idpf.org/opf" version="3.0" unique-identifier="bookid" prefix="rendition: http://www.idpf.org/vocab/rendition/# ibooks: http://vocabulary.itunes.apple.com/rdf/ibooks/vocabulary-extensions-1.0/ schema: http://schema.org/">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="bookid">urn:uuid:{book_uuid}</dc:identifier>
     <dc:title>Alice’s Adventures in Wonderland (2026 Modern Edition)</dc:title>
-    <dc:creator>Lewis Carroll</dc:creator>
+    <dc:creator id="creator">Lewis Carroll</dc:creator>
+    <meta refines="#creator" property="role" scheme="marc:relators">aut</meta>
+    <dc:publisher>2026 Modern Classics Digital Press</dc:publisher>
+    <dc:date>2026-11-16</dc:date>
     <dc:language>en</dc:language>
+    <dc:subject>Classic Fiction</dc:subject>
+    <dc:subject>Fantasy</dc:subject>
+    <dc:subject>Children's Literature</dc:subject>
+    <dc:rights>Original 1865 text in the Public Domain; 2026 modern edition, illustrations, and synchronized audio by 2026 Modern Classics Digital Press.</dc:rights>
+    <dc:description>An unabridged 2026 modernization of Lewis Carroll's beloved classic Alice's Adventures in Wonderland, crafted in clear, vivid English for all ages. Features 12 original Victorian etching-style chapter illustrations and full Apple Books Read-Aloud synchronization with two-level sentence and word-by-word highlighting.</dc:description>
     <meta name="cover" content="cover-image"/>
-    <meta property="dcterms:modified">2026-11-16T02:46:00Z</meta>
+    <meta property="dcterms:modified">2026-11-16T02:50:00Z</meta>
     <meta property="rendition:layout">pre-paginated</meta>
     <meta property="rendition:orientation">auto</meta>
     <meta property="rendition:spread">auto</meta>
     <meta property="ibooks:specified-fonts">true</meta>
+    <meta property="schema:accessibilityFeature">synchronizedAudioText</meta>
+    <meta property="schema:accessibilityFeature">tableOfContents</meta>
+    <meta property="schema:accessibilityFeature">readingOrder</meta>
+    <meta property="media:narrator">Aria Neural Voice</meta>
     <meta property="media:active-class">-epub-media-overlay-active</meta>
 {chr(10).join(duration_metas)}
   </metadata>
   <manifest>
 {chr(10).join(manifest_lines)}
   </manifest>
-  <spine>
+  <spine toc="ncx">
 {chr(10).join(spine_lines)}
   </spine>
 </package>
@@ -650,7 +846,7 @@ def main():
                 arcname = path.relative_to(epub_root).as_posix()
                 zf.write(path, arcname, compress_type=zipfile.ZIP_DEFLATED)
 
-    print(f"Created Illustrated Apple Books FXL EPUB3: {epub_out} ({epub_out.stat().st_size:,} bytes, {len(all_pages)} pages)")
+    print(f"Created Retail-Grade Apple Books FXL EPUB3: {epub_out} ({epub_out.stat().st_size:,} bytes, {len(all_pages)} story pages + 5 front/back matter pages)")
 
 
 if __name__ == "__main__":
